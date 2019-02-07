@@ -1,5 +1,5 @@
 smartchem_rawprocessor <- function(filename) {
-  path <- file.path("raw_data", filename) # Define path to workbook
+  path <- here("raw_data", filename) # Define path to workbook
   scdatawb <- lapply(excel_sheets(path = path), read_excel, path = path) # Load in workbook as a list of worksheets (tibbles)
   method <- scdatawb[[5]][[1,1]] # Extract the method name (BNO3, SMPL, WNHA, etc.) and save it as an object "method"
   run_date <- (run_dates_df %>% filter(filenames_raw == filename) %>% select(run_dates))[[1]] # Extract run_date for this file
@@ -16,7 +16,7 @@ smartchem_rawprocessor <- function(filename) {
   # Summarize dups by percent difference and absolute difference
   result_dups <- result_dups %>% group_by(Position) %>% 
     mutate(pct_diff_conc = 100*(Concentration-lag(Concentration))/((Concentration+lag(Concentration))/2), 
-           diff_conc = Concentration - lag(Concentration)) %>% 
+           abs_diff_conc = abs(Concentration - lag(Concentration))) %>% 
     ungroup() %>% 
     filter(grepl("Dup", SampleID))# filter to include only the dups
   

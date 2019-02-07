@@ -22,7 +22,7 @@ sc_qc_multiplot_fun <- function(sc_list_obj) {
     xlim(xlims)
   
   g3 <- sc_list_obj$dups %>% 
-    ggplot(aes(RunTime, diff_conc)) + 
+    ggplot(aes(RunTime, abs_diff_conc)) + 
     geom_point() + 
     geom_line() + 
     ggtitle(label = paste(sc_list_obj$method, "- Absolute difference of Dups",sc_list_obj$run_date)) +

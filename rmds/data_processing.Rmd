@@ -1,7 +1,7 @@
 ---
 title: "smartchem_raw_to_db"
 author: "Keith Birchfield"
-date: "January 2, 2019"
+date: "February 7, 2019"
 output: 
   html_document:
     toc: TRUE
@@ -21,25 +21,23 @@ This Rmd is a record of the data processing for raw data files output from Smart
 
 This data set includes the following samples, all from Lacamas Lake:
 
-  * 2017 Inlet/Outlet
-  * 2018 profile samples from Maia Kawamura's project
-  * 2018 DW samples matched with Tripod sampling
-
+  * 2018 DW profile samples
+  
 ## Load required packages and functions
 
 ```{r}
 library(tidyverse)
 library(lubridate)
 library(readxl)
-library(xlsx)
 library(cowplot)
 library(plotly)
-source(file.path("functions", "smartchem_rawprocessor.R"))
-source(file.path("functions", "sc_qc_multiplot_fun.R"))
-source(file.path("functions", "sc_cal_curve_plot.R"))
-source(file.path("functions", "sc_controls_plot.R"))
-source(file.path("functions", "sc_absdups_plot.R"))
-source(file.path("functions", "sc_no3coileffic_plot.R"))
+library(here)
+source(here("functions", "smartchem_rawprocessor.R"))
+source(here("functions", "sc_qc_multiplot_fun.R"))
+source(here("functions", "sc_cal_curve_plot.R"))
+source(here("functions", "sc_controls_plot.R"))
+source(here("functions", "sc_absdups_plot.R"))
+source(here("functions", "sc_no3coileffic_plot.R"))
 ```
 
 ## Import data
@@ -48,18 +46,18 @@ Make a list of file names in the raw_data folder
 
 ```{r}
 filenames_raw <-
-  list.files(file.path(".","raw_data"), pattern = "*\\.XLS", ignore.case = T, full.names = F)
+  list.files(here("raw_data"), pattern = "*\\.XLS", ignore.case = T, full.names = F)
 filenames_raw
 ```
 
 Specify the run dates for each file in filenames.orig and create a dataframe of filenames and their associated rundates
 ```{r}
 run_dates_df <- as_tibble(list(filenames = filenames_raw, 
-                               run_dates  = date(c("2018-08-21", "2018-08-21", "2018-08-22", "2018-08-23"))))
+                               run_dates  = date(c("2019-02-05", "2019-02-05", "2019-02-06", "2019-02-06"))))
 run_dates_df
 ```
 
-## WNHA - Ammonia analysis data processing
+## WNHR - Ammonia analysis data processing
 
 ### Import and Process excel workbook
 
@@ -67,6 +65,13 @@ run_dates_df
 nh3_run <- smartchem_rawprocessor(filename = filenames_raw[1])
 nh3_run
 ```
+
+Check the method to make sure it is an ammonia method (WNHR or WNHA)
+
+```{r}
+nh3_run$method
+```
+
 
 ### Quality Control Checks
 
@@ -81,22 +86,22 @@ sc_cal_curve_plot(nh3_run)
 ```{r}
 sc_controls_plot(nh3_run)
 ```
-NOTE: The two sharp spikes in BLNK were due to the sample cup going empty, not analysis errors. I rerun the plot below with those two points removed.
+
 
 ```{r}
-nh3_controls_plot <- 
-nh3_run$controls %>% mutate(Concentration = ifelse(SampleID == "BLNK" & Concentration > 0.25, NA, Concentration)) %>% 
-  ggplot(aes(RunTime, Concentration, color = SampleID)) +
-  geom_point() +
-  geom_line() +
-  geom_smooth(method = "lm", se = F) +
-  ggtitle(label = paste(nh3_run$method, "- Controls", nh3_run$run_date)) + 
-  xlab("Runtime") +
-  ylab("Concentration") +
-  #theme(legend.position = "top") +
-  geom_hline(yintercept = unique(nh3_run$controls$Nominal), linetype = 2)
-ggplotly(nh3_controls_plot) %>% 
-  layout(legend = list(orientation = "h", y = 1.05))
+#nh3_controls_plot <- 
+# nh3_run$controls %>% mutate(Concentration = ifelse(SampleID == "BLNK" & Concentration > 0.25, NA, Concentration)) %>% 
+#   ggplot(aes(RunTime, Concentration, color = SampleID)) +
+#   geom_point() +
+#   geom_line() +
+#   geom_smooth(method = "lm", se = F) +
+#   ggtitle(label = paste(nh3_run$method, "- Controls", nh3_run$run_date)) + 
+#   xlab("Runtime") +
+#   ylab("Concentration") +
+#   #theme(legend.position = "top") +
+#   geom_hline(yintercept = unique(nh3_run$controls$Nominal), linetype = 2)
+# ggplotly(nh3_controls_plot) %>% 
+#   layout(legend = list(orientation = "h", y = 1.05))
 ```
 
 
@@ -104,7 +109,7 @@ ggplotly(nh3_controls_plot) %>%
 ```{r}
 nh3_midcheck_pctrec <- 
   nh3_run$controls %>% 
-  filter(SampleID == "CCV5") %>% 
+  filter(SampleID == "CCA1") %>% 
   ggplot(aes(RunTime, Recovery_PRD)) +
   geom_point() + 
   geom_line() +
@@ -114,9 +119,9 @@ ggplotly(nh3_midcheck_pctrec)
 
 ```
 
+The checks and blanks were, for the most part, good on this run. Two of the mid-range checks were outside of the +/- 10% recovery range: one at timepoint 12:01:20 at 115% and one at timepoint 12:26:33 at 89%.
 
 
-The controls were not great. I'll come back to this.
 
 3. Duplicates analysis
 
@@ -133,56 +138,43 @@ All three together for comparison
 sc_qc_multiplot_fun(nh3_run)
 ```
 
+```{r}
+hist(nh3_run$dups$abs_diff_conc)
+```
+
+
+```{r}
+nh3_run$dups %>% 
+  summarise(avg_abs_diff = mean(abs_diff_conc),
+            sd_abs_diff = sd(abs_diff_conc), 
+            n_abs_diff = n(),
+            cv = sd_abs_diff/avg_abs_diff)
+```
+
+
+
 ### Data quality and corrections assessment
+
 
 Assessment:
 
-Mid-range check standard and blanks were outside of control parameters (+/- 10% recovery) starting at RunTime = 14:08:39. For the duration of the run, the controls remained mostly consistent at ~0.10 mg/L less than their nominal values. The two sharp spikes in BLNK were due to the blank sample cup going empty, not because of analysis errors. There was a conspicuous spike in both CCV5 and BLNK around 14:24 to 14:26. Dups varied by less than 0.1 mg/L with the exception of SampleID: 1627_Lac_2017-11-17_IN.
+
+Mid-range check standards and blanks were good on the whole for ammonia. Dups looked good as well with an average absolute diff of less than 0.008 ppm, which is 1.6% of the mid-range check standard. 
 
 Corrections and reruns:
+* None required
 
-* Due to the spike in CCV5 and BLNK: rerun all samples between RunTime 14:17 and 14:33.
-* Due to the spike in duplicate analysis at 14:44: rerun just sample 1627_Lac_2017-11-17_IN. CCV5 before and after this sample was consistent, which to me indicates that this was an isolated incident, perhaps some contamination in the cuvette. To assess this, flag the other samples in this set (between RunTime 14:41 and 14:48) for followup. 
-* For all other samples after RunTime 14:08:39, apply a correction equivalent to the average absolute difference from nominal values for CCV5 (excluding the small spike at RunTime = 15:18:52) and BLNK (excluding errors from empty samples). 
+Add metadata and save to merge with results of other analytes.
 
-Calculate correction factor
-```{r}
-corr_fact <- 
-nh3_run$controls %>% 
-  mutate(qc_diff = Nominal - Concentration) %>% 
-  filter(SampleID != "CCB",
-         RunTime >= ymd_hms("2018-08-21 14:08:39"),
-         qc_diff > 0) %>% # filters out spikes in CCV5 and BLNK 
-  summarise(correction = mean(qc_diff)) %>% 
-  .$correction
-corr_fact
-```
-
-Flag samples and apply correction factor
 ```{r}
 nh3_results_final <- 
 nh3_run$result %>% 
-  mutate(qc_flag = ifelse(RunTime >= ymd_hms("2018-08-21 14:17:00") & RunTime <= ymd_hms("2018-08-21 14:33:00") |
-                            grepl("1627_Lac_2017-11-17", SampleID), 
-                          "rerun", NA)) %>% 
-  mutate(qc_flag = ifelse(RunTime >= ymd_hms("2018-08-21 14:41:00") & RunTime <= ymd_hms("2018-08-21 14:48:00") & is.na(qc_flag), 
-                          "correction_factor; followup", qc_flag)) %>% 
-  mutate(qc_flag = ifelse(RunTime >= ymd_hms("2018-08-21 14:08:39") & is.na(qc_flag), "correction_factor", qc_flag),
-         concentration_corrected = ifelse(grepl("correction_factor", qc_flag), Concentration + corr_fact, NA),
-         concentration_final = ifelse(is.na(concentration_corrected) & qc_flag != "rerun" | is.na(qc_flag), Concentration, concentration_corrected))
-nh3_results_final
-```
-
-Add metadata and export to DB
-
-```{r}
-nh3_results_final %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "datetime", "site", "depth_nominal"), sep = "_", remove = FALSE) %>% 
-  mutate(method = "WNHA",
+  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  mutate(method = nh3_run$method,
          analyte = "nh3",
-         date_col = date(datetime)) %>% 
-  write.xlsx2(file = file.path("produced_data", "nh3_results_final_20180821.xlsx"), showNA = FALSE)
-  
+         date_col = date(datetime))
+
+nh3_results_final
 ```
 
 ## SMPL - Phosphate
@@ -192,6 +184,12 @@ nh3_results_final %>%
 ```{r}
 po4_run <- smartchem_rawprocessor(filename = filenames_raw[2])
 po4_run
+```
+
+Check the method to make sure it is a phosphate method (SMPL)
+
+```{r}
+po4_run$method
 ```
 
 ### Quality Control Checks
@@ -238,21 +236,46 @@ All three together for comparison
 sc_qc_multiplot_fun(po4_run)
 ```
 
+```{r}
+hist(po4_run$dups$abs_diff_conc)
+```
+
+
+```{r}
+po4_run$dups %>% 
+  summarise(avg_abs_diff = mean(abs_diff_conc),
+            sd_abs_diff = sd(abs_diff_conc), 
+            n_abs_diff = n(),
+            cv = sd_abs_diff/avg_abs_diff)
+```
+
+
 ### Data quality and corrections assessment
 
-Overall, controls were good for this run. Dup for SampleID = 1623_Lac_2017-10-24_...IN (position = 36) was abnormally high and outside of the calibration range. The non-dup sample was on the upper end of the cal curve at ~0.09 mg/L. I'll flag this one for follow-up as a potential rerun if that is deemed necessary.
+Overall, the controls were ok for this run. Mid-range checks ran a little high, but aside from one check at time 15:34, all mid-range check standards were within 0.01ppm of the 0.05ppm check standard. Duplicates averaged 0.002ppm in absolute difference for the run. No corrections or reruns are determined necessary at this time. 
 
-Flag one sample, add metadata, and export for db
+Before adding metadata, fix a typo in SampleID for observation # 4. 
 ```{r}
+po4_run$result$SampleID[4]
+
+po4_run$result$SampleID[4] <- "1586_Lac_DW_2018-01-09 15:00_9"
+
+po4_run$result$SampleID[4]
+
+```
+
+
+Add metadata and save to merge with results of other analytes.
+
+```{r}
+po4_results_final <- 
 po4_run$result %>% 
-  mutate(qc_flag = ifelse(Position == 36, "follow-up: high variation in duplicate", NA)) %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "datetime", "site", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = po4_run$method,
          analyte = "po4",
-         date_col = date(datetime),
-         filename = "po4_results_final_20180821.xlsx") %>% 
-  write.xlsx2(file = file.path("produced_data", "po4_results_final_20180821.xlsx"), showNA = FALSE)
+         date_col = date(datetime))
 
+po4_results_final
 ```
 
 
@@ -310,20 +333,33 @@ All three together for comparison
 ```{r, fig.height=10, fig.width=10}
 sc_qc_multiplot_fun(no2_run)
 ```
+```{r}
+hist(no2_run$dups$abs_diff_conc)
+```
+
+
+```{r}
+no2_run$dups %>% 
+  summarise(avg_abs_diff = mean(abs_diff_conc),
+            sd_abs_diff = sd(abs_diff_conc), 
+            n_abs_diff = n(),
+            cv = sd_abs_diff/avg_abs_diff)
+```
 
 ### Data quality and corrections assessment
 
-Overall, controls were good for this run. The one peak in the BLNK set was due to the sample cup running low. 
+Overall, controls were excellent for this run. No corrections or reruns required.  
 
-Add metadata, and export for db
+Add metadata and save to merge with results of other analytes.
 ```{r}
+no2_results_final <- 
 no2_run$result %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "datetime", "site", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = no2_run$method,
          analyte = "no2",
-         date_col = date(datetime),
-         filename = "no2_results_final_20180822.xlsx") %>% 
-  write.xlsx2(file = file.path("produced_data", "no2_results_final_20180822.xlsx"), showNA = FALSE)
+         date_col = date(datetime))
+
+no2_results_final
 
 ```
 
@@ -383,6 +419,21 @@ All three together for comparison
 sc_qc_multiplot_fun(no3_run)
 ```
 
+```{r}
+hist(no3_run$dups$abs_diff_conc)
+```
+
+
+```{r}
+no3_run$dups %>% 
+  summarise(avg_abs_diff = mean(abs_diff_conc),
+            sd_abs_diff = sd(abs_diff_conc), 
+            n_abs_diff = n(),
+            cv = sd_abs_diff/avg_abs_diff)
+```
+
+
+
 Nitrate module coil efficiency
 
 ```{r}
@@ -396,16 +447,33 @@ Mean coil efficiency (blue dotted line) = `r mean(no3_run$controls$coil_effic, n
 
 Overall, controls were good for this run. 
 
-Add metadata, and export for db
+Add metadata and save to merge with results of other analytes.
 ```{r}
+no3_results_final <- 
 no3_run$result %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "datetime", "site", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = no3_run$method,
          analyte = "no3",
-         date_col = no3_run$run_date,
-         filename = "no3_results_final_20180823.xlsx") %>% 
-  write.xlsx2(file = file.path("produced_data", "no3_results_final_20180823.xlsx"), showNA = FALSE)
+         date_col = no3_run$run_date)
+
+no3_results_final
 
 ```
+
+## Merge all and export
+
+```{r}
+filename_dbimport <- paste0("sc_20190207_dbimport_", format(Sys.time(), format = "%Y%m%d%H%M"), ".csv")
+filename_dbimport
+
+bind_rows(list(nh3_results_final, 
+               po4_results_final, 
+               no2_results_final, 
+               no3_results_final)) %>% 
+  mutate(filename = filename_dbimport) %>% 
+  write_excel_csv(path = here("produced_data", filename_dbimport), 
+                  na = "")
+```
+
 
 
