@@ -169,7 +169,7 @@ Add metadata and save to merge with results of other analytes.
 ```{r}
 nh3_results_final <- 
 nh3_run$result %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("tbl_wsinfo_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = nh3_run$method,
          analyte = "nh3",
          date_col = date(datetime))
@@ -270,7 +270,7 @@ Add metadata and save to merge with results of other analytes.
 ```{r}
 po4_results_final <- 
 po4_run$result %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("tbl_wsinfo_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = po4_run$method,
          analyte = "po4",
          date_col = date(datetime))
@@ -354,7 +354,7 @@ Add metadata and save to merge with results of other analytes.
 ```{r}
 no2_results_final <- 
 no2_run$result %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("tbl_wsinfo_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = no2_run$method,
          analyte = "no2",
          date_col = date(datetime))
@@ -451,7 +451,7 @@ Add metadata and save to merge with results of other analytes.
 ```{r}
 no3_results_final <- 
 no3_run$result %>% 
-  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  separate(SampleID, into = c("tbl_wsinfo_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
   mutate(method = no3_run$method,
          analyte = "no3",
          date_col = no3_run$run_date)
@@ -471,6 +471,9 @@ bind_rows(list(nh3_results_final,
                no2_results_final, 
                no3_results_final)) %>% 
   mutate(filename = filename_dbimport) %>% 
+  rename(sample_id = SampleID,
+         sample_type = SampleType,
+         run_time = RunTime)
   write_excel_csv(path = here("produced_data", filename_dbimport), 
                   na = "")
 ```
