@@ -1,7 +1,7 @@
 ---
 title: "smartchem_raw_to_db"
 author: "Keith Birchfield"
-date: "February 8, 2019"
+date: "February 21, 2019"
 output: 
   html_document:
     toc: TRUE
@@ -21,7 +21,8 @@ This Rmd is a record of the data processing for raw data files output from Smart
 
 This data set includes the following samples, all from Lacamas Lake:
 
-  * 2014 Inlet and Outlet samples - only the DW profile samples from these runs were processed and imported into the database. The PO4 run was not successful and therefore is not included in the data processing here.
+  * 2018 DW profile samples
+  * 2018 Inlet and Outlet samples
   
 ## Load required packages and functions
 
@@ -53,7 +54,7 @@ filenames_raw
 Specify the run dates for each file in filenames.orig and create a dataframe of filenames and their associated rundates
 ```{r}
 run_dates_df <- as_tibble(list(filenames = filenames_raw, 
-                               run_dates  = date(c("2015-04-09", "2015-04-07", "2015-04-08"))))
+                               run_dates  = date(c("2019-02-12", "2019-02-12", "2019-02-13", "2019-02-14", "2019-02-14"))))
 run_dates_df
 ```
 
@@ -62,7 +63,7 @@ run_dates_df
 ### Import and Process excel workbook
 
 ```{r}
-nh3_run <- smartchem_rawprocessor(filename = filenames_raw[2])
+nh3_run <- smartchem_rawprocessor(filename = filenames_raw[1])
 nh3_run
 ```
 
@@ -119,24 +120,8 @@ ggplotly(nh3_midcheck_pctrec)
 
 ```
 
-The nominal value for the midrange check standard was incorrect for this run. It was entered as 0.25 but should have been 0.5. I'll update that and recalculate % recovery, then pipe the result into the plot.
 
-```{r}
-nh3_run$controls %>% 
-  mutate(Nominal = case_when(Nominal == 0.25 ~ 0.50,
-                             Nominal != 0.25 ~ Nominal),
-         Recovery_PRD = case_when(Nominal == 0.5 ~ 100 * Concentration/Nominal)) %>% 
-  filter(SampleID == "CCA1") %>% 
-  ggplot(aes(RunTime, Recovery_PRD)) +
-  geom_point() + 
-  geom_line() +
-  geom_hline(yintercept = c(100, 90, 110), linetype = c(1,2,2), color = "green") +
-  labs(title = paste(nh3_run$method, "- Midrange Check % Recovery ", nh3_run$run_date))
-ggplotly(nh3_midcheck_pctrec)
-```
-
-
-The checks and blanks were good on this run. 
+The checks and blanks were good on this run. Only one mid-range check fell outside of the 10% error threshold (runtime = 13:32), but it was only slightly below the threshold at 89.3% recovery. This is acceptable. 
 
 
 3. Duplicates analysis
@@ -164,7 +149,7 @@ nh3_run$dups %>%
   summarise(avg_abs_diff = mean(abs_diff_conc),
             sd_abs_diff = sd(abs_diff_conc), 
             n_abs_diff = n(),
-            cv = sd_abs_diff/avg_abs_diff)
+            cv = 100 * sd_abs_diff/avg_abs_diff)
 ```
 
 
@@ -176,10 +161,27 @@ nh3_run$dups %>%
 Assessment:
 
 
-Mid-range check standards and blanks were good on the whole for ammonia. Dups looked good as well with an average absolute diff of less than 0.005 ppm, which is 1% of the mid-range check standard. 
+Mid-range check standards and blanks were good on the whole for ammonia. Dups were good for most of the run with an average absolute diff of less than 0.009 ppm, which is 1.7% of the mid-range check standard. The highest differences in dups came later in the run and correspond to higher concentrations (see figure below). It appears that error increases with concentration, but there aren't enough dups at higher concentrations in this run to make any conclusions about this trend. 
+
+For this run, I'll accept the results without any corrections.   
+
+```{r}
+nh3_run$dups %>% ggplot(aes(Concentration, abs_diff_conc)) + geom_point()
+```
+
+### Out of range
+
+Check results for samples that were out of range.
+
+```{r}
+nh3_run$result %>% 
+  filter(Concentration > 2)
+```
+Two samples were out of the range of the calibration curve. For some unknown reason, these were not automatically rerun even though the method parameters are set up to rerun samples greater than 2ppm (I checked this). These should both be rerun, particularly the 2018-08-16 sample at almost 5ppm. I'll flag both of these as reruns for being outside of the calibration range.
 
 Corrections and reruns:
-* None required
+* No corrections required
+* Flag two samples for reruns
 
 Add metadata and save to merge with results of other analytes.
 
@@ -187,24 +189,26 @@ Add metadata and save to merge with results of other analytes.
 nh3_results_final <- 
 nh3_run$result %>% 
   mutate(method = nh3_run$method,
-         analyte = "nh3")
+         analyte = "nh3",
+         qc_flag = case_when(SampleID == "2404_Lac_IN_2018-08-16 15:30_" | 
+                               SampleID == "2544_Lac_DW_2018-10-30 11:15_16.4" ~ "rerun: out of range"))
 
 nh3_results_final
 ```
 
-## SMPL - Phosphate (no data)
+## SMPL - Phosphate 
 
 ### Import and Process excel workbook
 
 ```{r}
-# po4_run <- smartchem_rawprocessor(filename = filenames_raw[2])
-# po4_run
+po4_run <- smartchem_rawprocessor(filename = filenames_raw[2])
+po4_run
 ```
 
 Check the method to make sure it is a phosphate method (SMPL)
 
 ```{r}
-# po4_run$method
+po4_run$method
 ```
 
 ### Quality Control Checks
@@ -212,26 +216,26 @@ Check the method to make sure it is a phosphate method (SMPL)
 1. Calibration curve
 
 ```{r}
-# sc_cal_curve_plot(po4_run)
+sc_cal_curve_plot(po4_run)
 ```
 
 2. Check Standards and Controls
 
 ```{r}
-# sc_controls_plot(po4_run)
+sc_controls_plot(po4_run)
 ```
 
 
 ```{r}
-# po4_midcheck_pctrec <- 
-#   po4_run$controls %>% 
-#   filter(SampleID == "CCV1") %>% 
-#   ggplot(aes(RunTime, Recovery_PRD)) +
-#   geom_point() + 
-#   geom_line() +
-#   geom_hline(yintercept = c(100, 90, 110), linetype = c(1,2,2), color = "green") +
-#   labs(title = paste(po4_run$method, "- Midrange Check % Recovery ", po4_run$run_date))
-# ggplotly(po4_midcheck_pctrec)
+po4_midcheck_pctrec <-
+  po4_run$controls %>%
+  filter(SampleID == "CCV1") %>%
+  ggplot(aes(RunTime, Recovery_PRD)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = c(100, 90, 110), linetype = c(1,2,2), color = "green") +
+  labs(title = paste(po4_run$method, "- Midrange Check % Recovery ", po4_run$run_date))
+ggplotly(po4_midcheck_pctrec)
 
 ```
 
@@ -241,56 +245,63 @@ Check the method to make sure it is a phosphate method (SMPL)
   a. Absolute difference over time
   
 ```{r}
-# sc_absdups_plot(po4_run)
+sc_absdups_plot(po4_run)
 ```
 
 
 All three together for comparison
 
 ```{r, fig.height=10, fig.width=10}
-# sc_qc_multiplot_fun(po4_run)
+sc_qc_multiplot_fun(po4_run)
 ```
 
 ```{r}
-# hist(po4_run$dups$abs_diff_conc)
+hist(po4_run$dups$abs_diff_conc)
 ```
 
 
 ```{r}
-# po4_run$dups %>% 
-  # summarise(avg_abs_diff = mean(abs_diff_conc),
-  #           sd_abs_diff = sd(abs_diff_conc), 
-  #           n_abs_diff = n(),
-  #           cv = sd_abs_diff/avg_abs_diff)
+po4_run$dups %>%
+summarise(avg_abs_diff = mean(abs_diff_conc),
+          sd_abs_diff = sd(abs_diff_conc),
+          n_abs_diff = n(),
+          cv = 100 * sd_abs_diff/avg_abs_diff)
 ```
+
+```{r}
+po4_run$dups %>% ggplot(aes(Concentration, abs_diff_conc)) + geom_point()
+```
+
 
 
 ### Data quality and corrections assessment
 
-Overall, the controls were ok for this run. Mid-range checks ran a little high, but aside from one check at time 15:34, all mid-range check standards were within 0.01ppm of the 0.05ppm check standard. Duplicates averaged 0.002ppm in absolute difference for the run. No corrections or reruns are determined necessary at this time. 
+As seems to be typical for phosphate, the controls in this run were not as accurate as for other methods. Both the mid-range checks and the blanks were consistently low relative to their expected values by 0.005 to 0.01 ppm, which would seem to point to the calibration curve being slightly off. Given that most of the dups had a concentration around 0ppm or below, it's likely that the concentrations were near or below the detection limit for this method. I'll proceed without any corrections. 
 
-Before adding metadata, fix a typo in SampleID for observation # 4. 
+### Out of range
+
+Check results for samples that were out of range.
+
 ```{r}
-# po4_run$result$SampleID[4]
-# 
-# po4_run$result$SampleID[4] <- "1586_Lac_DW_2018-01-09 15:00_9"
-# 
-# po4_run$result$SampleID[4]
-
+po4_run$result %>% 
+  filter(Concentration > 0.1)
 ```
+One sample was out of the range of the calibration curve. For some unknown reason, this was not automatically rerun even though the method parameters are set up to rerun samples greater than 0.1 ppm (I checked this). This should be rerun, particularly given it is more than 6x the concentration of the calibration standard. I'll flag as rerun for being outside of the calibration range.
 
+Corrections and reruns:
+* No corrections required
+* Flag one sample for rerun
 
 Add metadata and save to merge with results of other analytes.
 
 ```{r}
-# po4_results_final <- 
-# po4_run$result %>% 
-#   separate(SampleID, into = c("tbl_wsinfo_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
-#   mutate(method = po4_run$method,
-#          analyte = "po4",
-#          date_col = date(datetime))
-# 
-# po4_results_final
+po4_results_final <-
+po4_run$result %>%
+  mutate(method = po4_run$method,
+         analyte = "po4",
+         qc_flag = case_when(SampleID == "2404_Lac_IN_2018-08-16 15:30_" ~ "rerun: out of range"))
+
+po4_results_final
 ```
 
 
@@ -301,7 +312,7 @@ Add metadata and save to merge with results of other analytes.
 ### Import and Process excel workbook
 
 ```{r}
-no2_run <- smartchem_rawprocessor(filename = filenames_raw[3])
+no2_run <- smartchem_rawprocessor(filename = filenames_raw[4])
 no2_run
 ```
 
@@ -365,15 +376,28 @@ no2_run$dups %>%
   summarise(avg_abs_diff = mean(abs_diff_conc),
             sd_abs_diff = sd(abs_diff_conc), 
             n_abs_diff = n(),
-            cv = sd_abs_diff/avg_abs_diff)
+            cv = 100 * sd_abs_diff/avg_abs_diff)
 ```
 
 ### Data quality and corrections assessment
 
-Overall, controls were good for this run. I assume the spikes in the blank mid-run were the result of the sample cup running empty. No corrections or reruns required.  
+Overall, controls were good for this run. The spike in the blank mid-run was the result of the sample cup running empty. No corrections required.  
 
-Add metadata and save to merge with results of other analytes.
+### Out of range
+
+Check results for samples that were out of range.
+
 ```{r}
+no2_run$result %>% 
+  filter(Concentration > 0.5)
+```
+
+No samples were out of range.
+
+Correct a typo in SampleID for sample at position 6. Then add metadata and save to merge with results of other analytes.
+```{r}
+no2_run$result$SampleID[6] <- nh3_run$result$SampleID[6] 
+
 no2_results_final <- 
 no2_run$result %>% 
   mutate(method = no2_run$method,
@@ -391,7 +415,7 @@ no2_results_final
 ### Import and Process excel workbook
 
 ```{r}
-no3_run <- smartchem_rawprocessor(filename = filenames_raw[1])
+no3_run <- smartchem_rawprocessor(filename = filenames_raw[3])
 no3_run
 ```
 
@@ -407,17 +431,17 @@ no3_run$method
 1. Calibration curve
 
 ```{r}
-# sc_cal_curve_plot(no3_run)
+sc_cal_curve_plot(no3_run)
 ```
 
-The calibration curve data are missing. I'll look into this but assume that because this data set has been used elsewhere the calibration was good.
+
 
 2. Check Standards and Controls
 
 ```{r}
 sc_controls_plot(no3_run)
 ```
-It appears that CCN2 and CCN3 were placed in the wrong positions for the first part of this run. 
+
 
 ```{r}
 no3_midcheck_pctrec <- 
@@ -431,7 +455,7 @@ no3_midcheck_pctrec <-
 ggplotly(no3_midcheck_pctrec)
 
 ```
-Once placed in the correct position, CCN3 was within normal range.
+
 
 3. Duplicates analysis
 
@@ -458,7 +482,7 @@ no3_run$dups %>%
   summarise(avg_abs_diff = mean(abs_diff_conc),
             sd_abs_diff = sd(abs_diff_conc), 
             n_abs_diff = n(),
-            cv = sd_abs_diff/avg_abs_diff)
+            cv = 100 * sd_abs_diff/avg_abs_diff)
 ```
 
 
@@ -470,17 +494,36 @@ sc_no3coileffic_plot(no3_run)
 ```
 
 Mean coil efficiency (blue dotted line) = `r mean(no3_run$controls$coil_effic, na.rm = T)`
-This is inaccurate because CCN3 and CCN2 were in the wrong positions. Once in the correct positions, coil efficiency was good.
+This is inaccurate. I made a new mid-range standard (1ppm NO3) after the run because the mid-range NO3 check was consistently low. Comparing the two, the new 1ppm NO3 was slightly higher than the 1ppm NO3 used in the run. Absorption values were as follows: 
+
+2ppm NO3 standard for calibration = 0.728
+1ppm NO3 mid-range used in run = 0.335
+1ppm NO3 mid-range made fresh after run = 0.360
+1ppm NO2 used in run = 0.410
+
+Using the new 1ppm NO3 compared to the 1ppm NO2, the coil efficiency = 100 * 0.360/0.410 = 88%
 
 
 ### Data quality and corrections assessment
 
 Overall, controls were good for this run. 
 
-Add metadata and save to merge with results of other analytes.
+### Out of range
+
+Check results for samples that were out of range.
+
+```{r}
+no3_run$result %>% 
+  filter(Concentration > 2)
+```
+
+Three samples were out of range. All three were automatically rerun. I'll remove the first sets and keep the reruns.
+
+Add metadata and save to merge with results of other analytes. 
 ```{r}
 no3_results_final <- 
 no3_run$result %>% 
+  filter(Abs <= 0.93) %>% 
   mutate(method = no3_run$method,
          analyte = "no3")
 
@@ -488,26 +531,29 @@ no3_results_final
 
 ```
 
-## Merge all, filter down to include only inlet and outlet, add metadata, and export
+## Merge all, filter out the check samples (position = 1), add metadata, and export
 
 ```{r}
-filename_dbimport <- paste0("sc_20190208_dbimport_", format(Sys.time(), format = "%Y%m%d%H%M"), ".csv")
+filename_dbimport <- paste0("sc_20190221_dbimport_", format(Sys.time(), format = "%Y%m%d%H%M"), ".csv")
 filename_dbimport
 
+merged_results <- 
 bind_rows(list(nh3_results_final, 
-               #po4_results_final, 
+               po4_results_final, 
                no2_results_final, 
                no3_results_final)) %>% 
-  filter(grepl("LAC-", SampleID)) %>% 
-  separate(SampleID, into = c("reservoir", "datetime"), sep = "_", remove = F) %>% 
-  separate(reservoir, into = c("reservoir", "site"), sep = "-", remove = T) %>% 
-  mutate(site = case_when(site == "O" ~ "OUT",
-                          site == "I" ~ "IN"),
-         datetime = ymd_hm(paste0("20", datetime)),
-         filename = filename_dbimport) %>%
+  filter(Position > 1) %>% 
+  separate(SampleID, into = c("ws_info_id", "reservoir", "site", "datetime", "depth_nominal"), sep = "_", remove = FALSE) %>% 
+  mutate(reservoir = case_when(reservoir == "Lac" ~ "Lacamas"), 
+         date_col = date(datetime),
+         filename = filename_dbimport) %>% 
   rename(sample_id = SampleID,
          sample_type = SampleType,
-         run_time = RunTime) %>% 
+         run_time = RunTime) 
+
+merged_results
+
+merged_results %>% 
   write_excel_csv(path = here("produced_data", filename_dbimport), 
                   na = "")
 ```
